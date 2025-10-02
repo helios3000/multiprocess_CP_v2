@@ -1,0 +1,25 @@
+main.py
+혈압파형을 이용한 역박동 제어는 멀티프로세싱으로 구성되어 있어 main.py 파일에서 전체 프로그램 동작을 수행하도록 되어 있습니다.
+ibp가 주 데이터이며, 현재 spo2는 사용하지 않지만 array 구성 상 남아있습니다.
+
+Serial.py
+환자감시장치의 협압파형 데이터 및 박동형 ECMO 신호를 수신하는 파트로, 데이터 수신 후 Accumulation.py로 Queue 형태로 전송시킵니다.
+
+Accumulation.py
+Serial.py에서 Queue 형태로 받아온 데이터를 배열화 시킨 후 전체 데이터의 길이를 맞춰 Distribution.py로 전송시킵니다.
+
+Distribution.py
+환자감시장치에서 받은 데이터는 250Hz 이지만, 신경망의 효율을 높이기 위해 f-NN은 62.5Hz로 학습시켰으므로
+Accumulation.py에서 보내준 250Hz 데이터를 4분할하여 4개의 파트로 나누어 각각 Work.py에 전송시킵니다.
+
+Work.py
+Work.py에는 4개의 f-NN 적용 파트가 있어 Distirubution.py에서 보내준 4파트의 62.5Hz에 대하여 f-NN을 적용시켜
+각 파트에 대한 심장 및 박동형 ECMO의 펄스 위치에 대한 데이터를 얻고, 이를 Determination.py로 전송시킵니다.
+
+Determination.py
+Work.py에서 보내준 4파트의 심장 및 박동형 ECMO의 펄스 위치 배열들을 합친 후, 합쳐진 250Hz 데이터를 바탕으로
+심장 bpm과 심장과 박동형 ECMO 펄스의 간격을 체크하여 역박동이 이루어질 수 있는 bpm으로 동작하도록 comport로 전송합니다.
+
+Function.py
+프로그램에 쓰이는 내부함수들을 모아놓은 파일입니다.
+  
