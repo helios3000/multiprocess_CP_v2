@@ -110,7 +110,7 @@ def find_center_of_mass(group):
 #             i += 1
 #     return peak_positions
 
-def array_modifier(data_arr, min_height=10, min_distance=10):
+def array_modifier(data_arr, min_height=7, min_distance=10):
 
     peak_positions = []
     i = 0

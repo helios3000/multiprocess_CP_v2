@@ -20,7 +20,7 @@ class SerialReceiver(mp.Process):
 
     def run(self):
 
-        ser = serial.Serial('COM6', 115200, timeout=0.001)  # 수신할 comport 체크 (ex. COM1)
+        ser = serial.Serial('COM4', 115200, timeout=0.001)  # mock: COM6
         print('serial connect success')
         print(ser)
 
