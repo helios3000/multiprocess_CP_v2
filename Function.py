@@ -110,18 +110,17 @@ def find_center_of_mass(group):
 #             i += 1
 #     return peak_positions
 
-def array_modifier(data_arr, min_height=7, min_distance=10):
-
+def array_modifier(data_arr, min_height=5, min_distance=80):
     peak_positions = []
     i = 0
     while i < len(data_arr):
-        # 신호가 최소 높이(min_height) 이상인 지점을 찾습니다.
-        if data_arr[i] >= min_height:
-            # 이 지점이 바로 해당 그룹의 피크 위치가 됩니다.
-            group_start_index = i
-            peak_positions.append(float(group_start_index))  # 실수를 유지하기 위해 float() 사용
 
-            # 그룹이 끝날 때까지 인덱스를 이동시킵니다.
+        if data_arr[i] >= min_height:
+            group_start_index = i
+
+            if len(peak_positions) == 0 or (group_start_index - peak_positions[-1]) >= min_distance:
+                peak_positions.append(float(group_start_index))
+
             while i < len(data_arr) and data_arr[i] > 0:
                 i += 1
         else:
