@@ -73,31 +73,36 @@ class AI_Worker(mp.Process):
                 preload_val = self.in_preload_queue.get()
                 afterload_val = self.in_afterload_queue.get()
 
+                array_size = 130
+                sac_window_size_s = array_size - 90
+                sac_window_size_e = array_size
+                filter_size = array_size - 125
+
                 self.ibp_diff_window = np.append(self.ibp_diff_window, ibp_val)
-                if len(self.ibp_diff_window) > 127:  # 입력층의 ibp 데이터는 125개이지만 MA filter 적용을 위해 127로 설정
+                if len(self.ibp_diff_window) > array_size:  # 입력층의 ibp 데이터는 125개이지만 MA filter 적용을 위해 127로 설정
                     self.ibp_diff_window = self.ibp_diff_window[1:]  # old data 삭제
                 self.spo2_diff_window = np.append(self.spo2_diff_window, spo2_val)
-                if len(self.spo2_diff_window) > 127: self.spo2_diff_window = self.spo2_diff_window[1:]
+                if len(self.spo2_diff_window) > array_size: self.spo2_diff_window = self.spo2_diff_window[1:]
                 self.pump1_window = np.append(self.pump1_window, pump1_val)
-                if len(self.pump1_window) > 127: self.pump1_window = self.pump1_window[1:]
+                if len(self.pump1_window) > array_size: self.pump1_window = self.pump1_window[1:]
                 self.pump2_window = np.append(self.pump2_window, pump2_val)
-                if len(self.pump2_window) > 127: self.pump2_window = self.pump2_window[1:]
+                if len(self.pump2_window) > array_size: self.pump2_window = self.pump2_window[1:]
                 self.flow_window = np.append(self.flow_window, flow_val)
-                if len(self.flow_window) > 127: self.flow_window = self.flow_window[1:]
+                if len(self.flow_window) > array_size: self.flow_window = self.flow_window[1:]
                 self.preload_window = np.append(self.preload_window, preload_val)
-                if len(self.preload_window) > 127: self.preload_window = self.preload_window[1:]
+                if len(self.preload_window) > array_size: self.preload_window = self.preload_window[1:]
                 self.afterload_window = np.append(self.afterload_window, afterload_val)
-                if len(self.afterload_window) > 127: self.afterload_window = self.afterload_window[1:]
+                if len(self.afterload_window) > array_size: self.afterload_window = self.afterload_window[1:]
 
-                if len(self.ibp_diff_window) == 127:
+                if len(self.ibp_diff_window) == array_size:
 
                     spo2_seg = np.array(self.spo2_diff_window, dtype='float32')  # 입력층 spo2 데이터
                     ibp_seg = np.array(self.ibp_diff_window, dtype='float32')   # 입력층 ibp 데이터
-                    sac1_seg = np.array(self.pump1_window[37:127], dtype='float32')  # 입력층 ECMO pump 1 데이터
-                    sac2_seg = np.array(self.pump2_window[37:127], dtype='float32')  # 입력층 ECMO pump 2 데이터
+                    sac1_seg = np.array(self.pump1_window[sac_window_size_s:sac_window_size_e], dtype='float32')  # 입력층 ECMO pump 1 데이터
+                    sac2_seg = np.array(self.pump2_window[sac_window_size_s:sac_window_size_e], dtype='float32')  # 입력층 ECMO pump 2 데이터
 
-                    spo2_norm = moving_average_dnn(normalize(spo2_seg), 3)  # MA filter 적용
-                    ibp_norm = moving_average_dnn(normalize(ibp_seg), 3)  # MA filter 적용
+                    spo2_norm = moving_average_dnn(normalize(spo2_seg), filter_size+1)  # MA filter 적용
+                    ibp_norm = moving_average_dnn(normalize(ibp_seg), filter_size+1)  # MA filter 적용
 
                     inp_spo2 = np.hstack((spo2_norm, sac1_seg, sac2_seg))  # 입력층 (spo2 125 + pump1 90 + pump2 90)
                     inp_ibp = np.hstack((ibp_norm, sac1_seg, sac2_seg))  # 입력층 (ibp 125 + pump1 90 + pump2 90)

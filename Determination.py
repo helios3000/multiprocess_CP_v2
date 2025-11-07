@@ -3,7 +3,7 @@ import threading
 import serial
 import numpy as np
 from queue import Queue
-from Function import alternating_update_array, array_modifier, co_determination, calculate_bpm_adjustment
+from Function import alternating_update_array, array_modifier, calculate_cardiac_metrics
 
 
 class CounterPulsation(mp.Process):
@@ -44,6 +44,12 @@ class CounterPulsation(mp.Process):
         self.save_bpm = np.array([])
         self.save_status = np.array([])
 
+        self.save_he_delay = np.array([])
+        self.save_eh_delay = np.array([])
+        self.save_rs_h_prev = np.array([])
+        self.save_rs_h_curr = np.array([])
+        self.save_rs_e = np.array([])
+
         self.get_ibp_worker0 = np.array([])
 
         self.bpm = 0
@@ -65,6 +71,13 @@ class CounterPulsation(mp.Process):
 
         self.bpm_save_index = -1
         self.status_save_index = -1
+
+        self.he_delay = ''
+        self.eh_delay = ''
+        self.rs_h_prev = ''
+        self.rs_h_curr = ''
+        self.rs_e = ''
+        self.previous_h_curr_rs_value = ''
 
         self.last_processed_heart_peak_pos = -1
         self.previous_phase_error = 0.0
@@ -137,6 +150,11 @@ class CounterPulsation(mp.Process):
                         self.cal_success = False
                         self.bpm_save_index = -1
                         self.status_save_index = -1
+                        self.he_delay = ''
+                        self.eh_delay = ''
+                        self.rs_h_prev = ''
+                        self.rs_h_curr = ''
+                        self.rs_e = ''
 
                         heart_peak_positions = array_modifier(self.get_outp_h, min_distance=80)  # 심장 펄스 위치 값
                         ecmo_peak_positions = array_modifier(self.get_outp_e, min_distance=80)  # ECMO 펄스 위치 값
@@ -149,23 +167,34 @@ class CounterPulsation(mp.Process):
                             print(f"ecmo_peak_positions: {ecmo_peak_positions}")
                             print('')
 
-                            if len(heart_peak_positions) >= 2:
-                                h_prev, h_curr = heart_peak_positions[-2], heart_peak_positions[-1]
-                                interval_samples = h_curr - h_prev
+                            (bpm_calc, he_delay_calc, eh_delay_calc,
+                             rs_h_prev_calc, rs_h_curr_calc, rs_e_calc,
+                             new_prev_h_curr_rs_value, calc_success) = calculate_cardiac_metrics(
+                                heart_peak_positions,
+                                ecmo_peak_positions,
+                                self.previous_h_curr_rs_value,  # 이전 RS '값' 전달
+                                self.get_outp_h,  # H 원본 배열 전달
+                                self.get_outp_e  # E 원본 배열 전달
+                            )
 
-                                if interval_samples > 0:
-                                    current_heart_bpm = 60 / (interval_samples * 0.004)
+                            if calc_success:
+                                self.bpm = bpm_calc
+                                self.he_delay = he_delay_calc
+                                self.eh_delay = eh_delay_calc
+                                self.rs_h_prev = rs_h_prev_calc
+                                self.rs_h_curr = rs_h_curr_calc
+                                self.rs_e = rs_e_calc
+                                # 다음 루프를 위해 새 RS '값' 저장
+                                self.previous_h_curr_rs_value = new_prev_h_curr_rs_value
 
-                                    self.bpm = int(round(current_heart_bpm))
-                                    self.bpm = np.clip(self.bpm, 40, 100)
+                                self.cal_success = True
+                                self.bpm_save_index = int(last_peak_pos) - 496
+                                self.status_save_index = int(last_peak_pos) - 496
 
-                                    self.cal_success = True
-
-                                    self.bpm_save_index = int(last_peak_pos) - 496
-                                    self.status_save_index = int(last_peak_pos) - 496
-
-                                    print(f"BPM Calculated: {self.bpm}, Save Slot: {self.bpm_save_index}")
-                                    print('')
+                                print(f"BPM Calculated: {self.bpm}, Save Slot: {self.bpm_save_index}")
+                                print(f"H-E Delay: {self.he_delay}s, E-H Delay: {self.eh_delay}s")
+                                print(f"RS (Value): H_prev({self.rs_h_prev}), H_curr({self.rs_h_curr}), E({self.rs_e})")
+                                print('')
 
                         send_bpm.put(self.bpm)
                         send_status.put(self.status)
@@ -225,28 +254,53 @@ class CounterPulsation(mp.Process):
 
                         bpm_array = ['', '', '', '']
                         status_array = ['', '', '', '']
+                        he_delay_array = ['', '', '', '']
+                        eh_delay_array = ['', '', '', '']
+                        rs_h_prev_array = ['', '', '', '']
+                        rs_h_curr_array = ['', '', '', '']
+                        rs_e_array = ['', '', '', '']
 
                         bpm_array[self.bpm_save_index] = self.bpm
                         status_array[self.status_save_index] = self.status
+                        he_delay_array[self.bpm_save_index] = self.he_delay
+                        eh_delay_array[self.bpm_save_index] = self.eh_delay
+                        rs_h_prev_array[self.bpm_save_index] = self.rs_h_prev
+                        rs_h_curr_array[self.bpm_save_index] = self.rs_h_curr
+                        rs_e_array[self.bpm_save_index] = self.rs_e
 
                         self.save_bpm = np.append(self.save_bpm, bpm_array)
                         self.save_status = np.append(self.save_status, status_array)
+                        self.save_he_delay = np.append(self.save_he_delay, he_delay_array)
+                        self.save_eh_delay = np.append(self.save_eh_delay, eh_delay_array)
+                        self.save_rs_h_prev = np.append(self.save_rs_h_prev, rs_h_prev_array)
+                        self.save_rs_h_curr = np.append(self.save_rs_h_curr, rs_h_curr_array)
+                        self.save_rs_e = np.append(self.save_rs_e, rs_e_array)
 
                     else:
                         self.save_bpm = np.append(self.save_bpm, [''] * 4)
                         self.save_status = np.append(self.save_status, [''] * 4)
+                        self.save_he_delay = np.append(self.save_he_delay, [''] * 4)
+                        self.save_eh_delay = np.append(self.save_eh_delay, [''] * 4)
+                        self.save_rs_h_prev = np.append(self.save_rs_h_prev, [''] * 4)
+                        self.save_rs_h_curr = np.append(self.save_rs_h_curr, [''] * 4)
+                        self.save_rs_e = np.append(self.save_rs_e, [''] * 4)
 
                     self.determination_loop += 4
 
                     if self.determination_loop == 5000:
                         labels = ["spo2", "est_h_spo2", "est_e_spo2", "preload", "ibp_raw", "ibp_diff", "sac1",
-                                  "sac2", "flow", "est_h_ibp", "est_e_ibp", "bpm", "status"]
+                                  "sac2", "flow", "est_h_ibp", "est_e_ibp", "bpm", "status",
+                                  "he_delay", "eh_delay", "rs_h_prev", "rs_h_curr", "rs_e"]
 
                         save_data = np.vstack((self.save_spo2, self.save_outp_h_spo2, self.save_outp_e_spo2,
                                                self.save_preload, self.save_afterload, self.save_diff,
                                                self.save_sac1, self.save_sac2, self.save_flow,
                                                self.save_outp_h, self.save_outp_e, self.save_bpm,
-                                               self.save_status)).T
+                                               self.save_status,
+                                               self.save_he_delay, self.save_eh_delay,
+                                               self.save_rs_h_prev, self.save_rs_h_curr, self.save_rs_e
+                                               )).T
+
 
                         labels_array = np.array(labels).reshape(1, len(labels))
                         save_data_with_labels = np.concatenate((labels_array, save_data), axis=0)
@@ -261,7 +315,6 @@ class CounterPulsation(mp.Process):
                         self.save_spo2 = np.array([])
                         self.save_outp_h_spo2 = np.array([])
                         self.save_outp_e_spo2 = np.array([])
-
                         self.save_diff = np.array([])
                         self.save_sac1 = np.array([])
                         self.save_sac2 = np.array([])
@@ -272,6 +325,12 @@ class CounterPulsation(mp.Process):
                         self.save_flow = np.array([])
                         self.save_preload = np.array([])
                         self.save_afterload = np.array([])
+                        self.save_he_delay = np.array([])
+                        self.save_eh_delay = np.array([])
+                        self.save_rs_h_prev = np.array([])
+                        self.save_rs_h_curr = np.array([])
+                        self.save_rs_e = np.array([])
+
 
                         self.determination_loop = 0
 

@@ -92,24 +92,6 @@ def find_center_of_mass(group):
     return weighted_sum / sum_of_values
 
 
-# def array_modifier(data_arr, min_height=15, min_distance=10):
-#
-#     peak_positions = []
-#     i = 0
-#     while i < len(data_arr):
-#         if data_arr[i] >= min_height:
-#             group_start_index = i
-#             while i < len(data_arr) and data_arr[i] > 0:
-#                 i += 1
-#             group_end_index = i
-#             group = data_arr[group_start_index:group_end_index]
-#             center_of_mass_rel = find_center_of_mass(group)
-#             absolute_pos = group_start_index + center_of_mass_rel
-#             peak_positions.append(absolute_pos)
-#         else:
-#             i += 1
-#     return peak_positions
-
 def array_modifier(data_arr, min_height=5, min_distance=80):
     peak_positions = []
     i = 0
@@ -127,6 +109,70 @@ def array_modifier(data_arr, min_height=5, min_distance=80):
             i += 1
 
     return peak_positions
+
+
+def calculate_cardiac_metrics(heart_peak_positions, ecmo_peak_positions,
+                              previous_h_curr_rs_value, data_arr_h, data_arr_e):
+
+    bpm = 0
+    he_delay = ''
+    eh_delay = ''
+    rs_h_prev = ''
+    rs_h_curr = ''
+    rs_e = ''
+    new_previous_h_curr_rs_value = previous_h_curr_rs_value  # 이전 값 유지
+    calc_success = False
+
+    # BPM 및 딜레이 계산을 위해 최소 2개의 심장 펄스가 필요
+    if len(heart_peak_positions) >= 2:
+        # 펄스 '인덱스'
+        h_prev_idx, h_curr_idx = heart_peak_positions[-2], heart_peak_positions[-1]
+        interval_samples = h_curr_idx - h_prev_idx
+
+        if interval_samples > 0:
+            # 1. BPM 계산 (인덱스 차이로 계산)
+            current_heart_bpm = 60 / (interval_samples * 0.004)
+            bpm = int(round(current_heart_bpm))
+            bpm = np.clip(bpm, 40, 100)
+
+            # 2. RS '값' 조회
+            try:
+                # rs_h_prev는 이전 '값'을 그대로 사용
+                rs_h_prev = previous_h_curr_rs_value
+                # rs_h_curr는 현재 인덱스(h_curr_idx)를 사용해 '값'을 조회
+                rs_h_curr = data_arr_h[int(h_curr_idx)]
+                # 다음 루프를 위해 현재 '값'을 반환
+                new_previous_h_curr_rs_value = rs_h_curr
+            except IndexError:
+                # 혹시 모를 인덱스 오류 방지
+                rs_h_curr = ''
+                new_previous_h_curr_rs_value = ''
+
+            # 3. H-E, E-H delay 계산
+            found_e_peak_idx = None
+            for e_peak_idx in reversed(ecmo_peak_positions):
+                if h_prev_idx < e_peak_idx < h_curr_idx:
+                    found_e_peak_idx = e_peak_idx
+                    break
+
+            if found_e_peak_idx is not None:
+                # 딜레이는 '인덱스' 차이로 계산
+                he_delay_samples = found_e_peak_idx - h_prev_idx
+                eh_delay_samples = h_curr_idx - found_e_peak_idx
+                he_delay = round(he_delay_samples * 0.004, 3)
+                eh_delay = round(eh_delay_samples * 0.004, 3)
+
+                # rs_e는 '인덱스'를 사용해 '값'을 조회
+                try:
+                    rs_e = data_arr_e[int(found_e_peak_idx)]
+                except IndexError:
+                    rs_e = ''
+
+            # 4. 계산 성공
+            calc_success = True
+
+    # 계산된 값들 반환
+    return bpm, he_delay, eh_delay, rs_h_prev, rs_h_curr, rs_e, new_previous_h_curr_rs_value, calc_success
 
 
 def co_determination(heart_peak_positions, ecmo_peak_positions):
